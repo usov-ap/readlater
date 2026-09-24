@@ -1,0 +1,6 @@
+{
+  "name": "ReadLater",
+  "description": "Save first. Process later. Личный Inbox для статей, видео и материалов из интернета.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
