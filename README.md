@@ -1,59 +1,59 @@
 # ReadLater
 
-> **Save first. Process later.**
+> **Save first. Process later.** (Сначала сохрани. Разбери потом.)
 
-ReadLater is a fast, keyboard-first, distraction-free personal Inbox for articles, videos, GitHub repositories, and developer documentation found across the web. Instead of accumulating 150 dead browser bookmarks, ReadLater provides an actionable triage workflow to process links into a clean, curated personal library.
+**ReadLater** — быстрое, минималистичное и ориентированное на клавиатурное управление веб-приложение для сохранения и разбора материалов из интернета (статей, видео, GitHub-репозиториев, документации и постов). Вместо сотен забытых закладок в браузере, ReadLater предлагает строгий рабочий процесс (triage workflow) для последовательного превращения входящих ссылок в структурированную личную библиотеку.
 
 ---
 
-## Architecture Overview
+## Архитектура проекта
 
-ReadLater is built with a modular, clean frontend architecture adhering to strict software engineering standards:
+Проект спроектирован по модульному принципу с разделением ответственности и изоляцией уровня данных от представления:
 
 ```text
 src/
-├── app/                  # Application bootstrap, routing & global providers
-│   ├── App.tsx
-│   ├── router.tsx
-│   └── providers.tsx
-├── components/           # Accessible UI primitives & layout shells
-│   ├── common/           # Domain empty states, helpers
-│   ├── layout/           # Responsive AppLayout, Sidebar, Header, MobileNav
+├── app/                  # Инициализация приложения, роутер и глобальные провайдеры
+│   ├── App.tsx           # Корневой компонент
+│   ├── router.tsx        # Маршрутизация на базе React Router
+│   └── providers.tsx     # ErrorBoundary, ThemeProvider, ToastProvider
+├── components/           # Переиспользуемые UI-компоненты и лейауты
+│   ├── common/           # ErrorBoundary, EmptyState
+│   ├── layout/           # AppLayout, Sidebar, Header, MobileNav
 │   └── ui/               # Button, Input, Modal, Skeleton, Toast
-├── context/              # Global React Contexts
-│   ├── ThemeContext.tsx  # Light, Dark, System theme synchronization
-│   └── ToastContext.tsx  # Unobtrusive notifications with Undo action
-├── features/             # Feature-driven slices
-│   ├── inbox/            # Rapid Inbox Processing engine & keyboard shortcuts
-│   │   ├── components/   # ProcessScreen, ProcessCompletion, ShortcutsDialog
+├── context/              # Глобальные контексты приложения
+│   ├── ThemeContext.tsx  # Переключение и синхронизация тем (Светлая / Тёмная / Системная)
+│   └── ToastContext.tsx  # Всплывающие уведомления с поддержкой Undo (отмены действий)
+├── features/             # Предметные модули (Feature-driven slices)
+│   ├── inbox/            # Механизм быстрого разбора Inbox и горячие клавиши
+│   │   ├── components/   # ProcessScreen, ProcessCompletion, KeyboardShortcutsDialog
 │   │   └── types.ts
-│   ├── items/            # Items domain, card, list, metadata & persistence
-│   │   ├── api/          # Repository interface, LocalStorageRepository, Metadata
-│   │   ├── components/   # ItemCard, ItemList, AddLinkModal, DuplicateDialog
+│   ├── items/            # Управление материалами, карточки, списки, метаданные и хранение
+│   │   ├── api/          # Абстракция ItemsRepository, LocalStorageRepository, MetadataService
+│   │   ├── components/   # ItemCard, ItemList, AddLinkModal, DuplicateWarningDialog
 │   │   ├── hooks/        # useItems, useItem
-│   │   └── seedData.ts   # Curated starter materials
-│   └── search/           # Global Command Palette (⌘K) & query filtering
-├── lib/                  # Pure utility functions
-│   ├── url.ts            # URL normalization, validation, automatic type inference
-│   └── utils.ts          # Relative date formatting, IDs, typography helpers
-├── pages/                # Route page views
-│   ├── InboxPage.tsx
-│   ├── ProcessingPage.tsx
-│   ├── ReadingPage.tsx
-│   ├── CompletedPage.tsx
-│   ├── FavoritesPage.tsx
-│   ├── ArchivePage.tsx
-│   ├── TagFilterPage.tsx
-│   └── ItemDetailsPage.tsx
-└── types/                # Domain entities (Item, ItemType, ItemStatus, Tag)
+│   │   └── seedData.ts   # Начальный набор демонстрационных материалов
+│   └── search/           # Командная строка глобального поиска (⌘K / Ctrl+K)
+├── lib/                  # Чистые утилиты и хелперы
+│   ├── url.ts            # Валидация протоколов, нормализация URL, автоопределение типов
+│   └── utils.ts          # Относительные даты, генераторы ID, типографика
+├── pages/                # Страницы разделов приложения
+│   ├── InboxPage.tsx     # Входящие материалы, требующие разбора
+│   ├── ProcessingPage.tsx# Экран пошаговой обработки Inbox
+│   ├── ReadingPage.tsx   # Материалы в процессе чтения («Читаю»)
+│   ├── CompletedPage.tsx # Прочитанные материалы («Прочитано»)
+│   ├── FavoritesPage.tsx # Избранное («Избранное»)
+│   ├── ArchivePage.tsx   # Архив («Архив»)
+│   ├── TagFilterPage.tsx # Фильтрация по конкретному тегу
+│   └── ItemDetailsPage.tsx # Страница деталей, заметок и редактирования
+└── types/                # Строгая типизация TypeScript (Item, ItemType, ItemStatus, Tag)
     └── item.ts
 ```
 
 ---
 
-## Repository & API Abstraction
+## Абстракция API и слоя репозитория (Repository Pattern)
 
-The UI never couples directly to storage or raw fetch calls. All data operations flow through the `ItemsRepository` interface:
+Интерфейс пользователя полностью изолирован от деталей сохранения данных. Все операции выполняются исключительно через контракт интерфейса `ItemsRepository`:
 
 ```typescript
 export interface ItemsRepository {
@@ -71,60 +71,106 @@ export interface ItemsRepository {
 }
 ```
 
-- **Persistence**: Implemented via `LocalStorageItemsRepository` (`readlater_items_v2`), which survives reloads and tabs via broadcast subscriptions.
-- **Backend Migration Path**: When replacing with a real Go + PostgreSQL backend, only an `HttpItemsRepository` implementing `ItemsRepository` needs to be provided. Zero UI components require modification.
+* **Текущая реализация**: `LocalStorageItemsRepository` (ключ `readlater_items_v3`). Поддерживает валидацию и санитаризацию данных при загрузке, отказоустойчивость при переполнении квоты, а также реактивную синхронизацию между вкладками браузера через событие `storage` и внутреннюю подписку (`subscribe`).
+* **План перехода на бэкенд (Go + PostgreSQL)**: Для подключения серверного API достаточно создать класс `HttpItemsRepository`, реализующий `ItemsRepository`. Ни один компонент пользовательского интерфейса менять не потребуется.
 
 ---
 
-## Key Features
+## Ключевые возможности
 
-1. **Fast Link Saving**:
-   - URL validation (strict `http`/`https` scheme enforcement).
-   - Duplicate detection with options to open existing or save anyway.
-   - Non-blocking metadata extraction: title, description, domain, favicon, and automatic type inference.
-2. **Inbox Processing Mode** (`/process`):
-   - Review materials one-by-one in a high-focus view.
-   - Instant keyboard shortcuts (`J`/`K` navigate, `R` mark read, `L` later, `F` favorite, `D` delete with Undo, `O` open original, `?` help).
-   - Touch-friendly large action buttons on mobile.
-   - Summary completion screen displaying reviewed counts.
-3. **Core UX Workflow**:
-   - `Save` → `Inbox` → `Process` → `Reading` / `Completed` / `Later` / `Archived`.
-   - Independent `isFavorite` flag.
-4. **Lightweight Organization**:
-   - Plain `#tags` (inline unboxed text, no heavy pill sandwiches).
-   - Personal notes with automatic saving on blur.
-5. **Global Search**:
-   - Fast `⌘K` / `Ctrl+K` command palette across title, description, URL, source, tags, and personal notes.
-6. **Design System & Aesthetics**:
-   - Typography-first, minimal, calm aesthetic following Linear/Raycast design principles.
-   - Dark, Light, and System theme support without flashing.
-   - Full mobile and desktop responsiveness.
+### 1. Быстрое сохранение ссылок (Add Link)
+* **Строгая валидация URL**: Разрешены только протоколы `http://` и `https://`, предотвращаются уязвимости (XSS через `javascript:` или `data:`).
+* **Очистка от трекинга**: Автоматическое вырезание маркетинговых параметров (`utm_*`, `fbclid`, `gclid`, `yclid`, `ref` и др.).
+* **Проверка дубликатов**: Мгновенный поиск совпадений по нормализованному URL с возможностью перейти к существующей карточке или сохранить повторно.
+* **Автоматическое извлечение метаданных**: Определение названия, описания, домена, фавиконки и типа контента (статья, видео, документация, репозиторий GitHub, новость, пост). Процесс не блокирует сохранение даже при сетевых сбоях.
+
+### 2. Режим разбора очереди (Inbox Processing Mode) — `/process`
+* Фокусированный просмотр материалов по одному без отвлекающих элементов.
+* **Горячие клавиши для скоростного разбора**:
+  * `J` / `↓` — Следующий материал
+  * `K` / `↑` — Предыдущий материал
+  * `R` — Отметить как прочитанное (`Completed`)
+  * `L` — Оставить на потом (`Later` / отложить)
+  * `F` — Добавить / удалить из «Избранного»
+  * `D` — Удалить с возможностью отмены (`Undo`)
+  * `O` — Открыть оригинальную ссылку в новой вкладке
+  * `Esc` — Выйти в Inbox
+  * `?` — Показать / скрыть панель горячих клавиш
+* Защита от дребезга и повторных нажатий (`isActionPending`).
+* Крупные сенсорные области для комфортной работы на смартфонах и планшетах ($\ge 44 \times 44$px).
+* Итоговый экран разбора с наглядной статистикой сессии.
+
+### 3. Основной жизненный цикл материала
+```text
+Сохранение ссылки
+      ↓
+    Inbox
+      ↓
+Разбор Inbox
+      ↓
+[ Читаю ]   [ Прочитано ]   [ Избранное ]   [ Удалить ]
+      ↓           ↓
+    Архив   История чтения
+```
+* Флаг «Избранное» независим от статуса (можно добавить в избранное как материал в очереди, так и уже прочитанный).
+
+### 4. Организация и заметки
+* **Дисциплина Zero-Pill**: Теги отображаются аккуратным моноширинным текстом с `#` без массивных визуальных плашек.
+* **Личные заметки**: Полноценное поле для конспектов и тезисов с автоматическим сохранением по потере фокуса (`blur`).
+* **Безопасное отображение**: Заметки выводятся как чистый текст (`whitespace-pre-line`), исключая возможность инъекций кода.
+
+### 5. Глобальный поиск (`⌘K` / `Ctrl+K`)
+* Полнотекстовый поиск по заголовкам, URL, доменам, кратким описаниям, тегам и личным заметкам.
+* Клавиатурная навигация и моментальный переход к карточке.
+
+### 6. Дизайн и доступность
+* Гарнитура `Plus Jakarta Sans` в паре с `JetBrains Mono` для табличных цифр и метаданных.
+* Тёмная, светлая и системная темы оформления.
+* Доступность: атрибуты `role="dialog"`, `aria-modal="true"`, русскоязычные `aria-label`, перехват клавиши `Escape`.
+* Отказоустойчивость: глобальный `ErrorBoundary` перехватывает ошибки рендеринга и предлагает перезагрузку или возврат в библиотеку.
 
 ---
 
-## How to Run
+## Запуск и разработка
 
 ```bash
-# Install dependencies
+# Установка зависимостей
 npm install
 
-# Run Vite dev server
+# Запуск сервера разработки Vite (порт 3000)
 npm run dev
 
-# Build for production
+# Проверка типов TypeScript (без генерации файлов)
+npm run lint
+
+# Сборка проекта для продакшена
 npm run build
 
-# Run TypeScript type check
-npm run lint
+# Предпросмотр продакшен-сборки
+npm run preview
 ```
 
 ---
 
-## Roadmap & Next Steps (TODO)
+## Поддерживаемые типы материалов
 
-- [ ] Browser extension (`Save to ReadLater` in 1 click)
-- [ ] Mobile Share Sheet integration (PWA Web Share Target)
-- [ ] Reader mode text extraction for offline reading
-- [ ] Snooze timing for `Later` (e.g. "Snooze until tomorrow", "Snooze for 1 week")
-- [ ] Import from Chrome bookmarks, Pocket, and Raindrop (HTML/CSV import)
-- [ ] Real Go + PostgreSQL REST backend implementation
+| Тип | Обозначение | Примеры автоопределения |
+|---|---|---|
+| **Статья** | Статья | Обычные веб-страницы, блоги, Medium, Substack |
+| **Документация** | Документация | docs.*, go.dev/doc, MDN Web Docs, devdocs.io |
+| **GitHub** | GitHub | github.com, gist.github.com, gitlab.com |
+| **Видео** | Видео | youtube.com, youtu.be, vimeo.com, loom.com |
+| **Новость** | Новость | Hacker News, BBC, The Verge, Reuters, Wired |
+| **Пост** | Пост | X / Twitter, Threads, Bluesky, Reddit |
+| **Другое** | Другое | Прочие интернет-ресурсы |
+
+---
+
+## План развития (Roadmap)
+
+- [ ] Браузерное расширение (сохранение в ReadLater в 1 клик).
+- [ ] Интеграция с системным диалогом «Поделиться» на смартфонах (Web Share Target API в PWA).
+- [ ] Режим чтения (Reader View) с извлечением чистого текста для чтения оффлайн.
+- [ ] Откладывание на заданный срок (Snooze: «Напомнить завтра», «Напомнить через неделю»).
+- [ ] Импорт закладок из Chrome, Pocket и Raindrop (форматы HTML / CSV).
+- [ ] Полноценный бэкенд на Go + PostgreSQL с синхронизацией между устройствами.
