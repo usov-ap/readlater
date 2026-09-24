@@ -131,24 +131,161 @@ export interface ItemsRepository {
 
 ---
 
-## Запуск и разработка
+## Развёртывание через Docker Compose (Self-Hosted)
+
+Архитектура развёртывания:
+
+```text
+External Reverse Proxy (Nginx / Caddy / Traefik на хосте)
+        │ HTTPS
+        ▼
+   Docker Host
+   ├── frontend   (порт 127.0.0.1:3000 -> React/Vite SPA через Nginx)
+   ├── backend    (порт 127.0.0.1:8080 -> Go API)
+   └── postgres   (изолированная внутренняя сеть, порт наружу НЕ пробрасывается)
+```
+
+### Быстрый старт
 
 ```bash
-# Установка зависимостей
-npm install
+# 1. Клонируйте репозиторий
+git clone https://github.com/your-username/readlater.git
+cd readlater
 
-# Запуск сервера разработки Vite (порт 3000)
-npm run dev
+# 2. Скопируйте файл конфигурации и задайте надёжный пароль БД
+cp .env.example .env
+nano .env
 
-# Проверка типов TypeScript (без генерации файлов)
-npm run lint
-
-# Сборка проекта для продакшена
-npm run build
-
-# Предпросмотр продакшен-сборки
-npm run preview
+# 3. Соберите и запустите контейнеры
+docker compose up -d
 ```
+
+### Управление контейнерами
+
+```bash
+# Проверка статуса контейнеров и healthcheck
+docker compose ps
+
+# Просмотр логов в реальном времени
+docker compose logs -f
+
+# Перезапуск сервисов
+docker compose restart
+
+# Остановка с сохранением данных
+docker compose down
+
+# Пересборка после обновлений
+docker compose build --no-cache
+docker compose up -d
+```
+
+---
+
+## Сетевые порты и настройка внешнего Reverse Proxy
+
+Сервисы привязаны к `127.0.0.1`, чтобы исключить прямой несанкционированный доступ из публичной сети:
+
+| Сервис | Внутренний порт | Публикация на хосте | Назначение |
+|---|---|---|---|
+| **frontend** | `80` | `127.0.0.1:3000` | Статические файлы SPA (Vite сборка + Nginx fallback) |
+| **backend** | `8080` | `127.0.0.1:8080` | REST API (Go + PostgreSQL) |
+| **postgres** | `5432` | *Не публикуется* | Доступен только внутри Docker-сети `readlater-network` |
+
+### Пример конфигурации внешнего Nginx на хосте:
+
+```nginx
+server {
+    listen 80;
+    server_name readlater.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name readlater.example.com;
+
+    # SSL сертификаты (Let's Encrypt / Certbot)
+    ssl_certificate /etc/letsencrypt/live/readlater.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/readlater.example.com/privkey.pem;
+
+    # Frontend SPA (статические файлы и клиентский роутинг)
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Go API Backend
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Проверка здоровья бэкенда для мониторинга
+    location = /health {
+        proxy_pass http://127.0.0.1:8080/health;
+    }
+}
+```
+
+---
+
+## Резервное копирование и восстановление (Backup & Restore)
+
+Данные хранятся в постоянном томе Docker `readlater_postgres_data` и сохраняются при любых перезапусках `docker compose down`.
+
+### Создание резервной копии:
+```bash
+# Дамп базы данных в сжатый файл с датой
+docker compose exec -T postgres pg_dump -U readlater readlater | gzip > readlater_backup_$(date +%Y%m%d_%H%M%S).sql.gz
+```
+
+### Восстановление из резервной копии:
+```bash
+# 1. Распаковка и восстановление в базу данных
+gunzip -c readlater_backup_20260924.sql.gz | docker compose exec -T postgres psql -U readlater -d readlater
+```
+
+---
+
+## Обновление приложения
+
+```bash
+# 1. Получите свежий код
+git pull origin main
+
+# 2. Пересоберите контейнеры
+docker compose build
+
+# 3. Перезапустите приложение без простоя данных
+docker compose up -d
+```
+
+---
+
+## Восстановление после сбоев
+
+1. **База данных не отвечает**:
+   Проверьте статус healthcheck:
+   ```bash
+   docker compose ps
+   docker compose logs postgres
+   ```
+2. **Бэкенд не запускается**:
+   Убедитесь, что логин и пароль в `.env` совпадают с `POSTGRES_USER` и `POSTGRES_PASSWORD`:
+   ```bash
+   docker compose logs backend
+   ```
+3. **Очистка и чистый перезапуск (в крайнем случае)**:
+   ```bash
+   docker compose restart backend frontend
+   ```
 
 ---
 

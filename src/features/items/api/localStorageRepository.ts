@@ -344,5 +344,12 @@ export class LocalStorageItemsRepository implements ItemsRepository {
   }
 }
 
-// Global singleton repository instance
-export const itemsRepository = new LocalStorageItemsRepository();
+import { HttpItemsRepository } from './httpRepository';
+
+// Global repository instance:
+// Uses Go API backend when VITE_API_BASE_URL is set (e.g. in Docker Compose /api),
+// or LocalStorageItemsRepository for standalone/offline operation.
+const apiBase = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_API_BASE_URL : undefined;
+export const itemsRepository: ItemsRepository = apiBase
+  ? new HttpItemsRepository(apiBase)
+  : new LocalStorageItemsRepository();
