@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Cache package files
 COPY package*.json ./
-RUN npm ci || npm install
+RUN npm ci
 
 # Copy source and build
 COPY . .
