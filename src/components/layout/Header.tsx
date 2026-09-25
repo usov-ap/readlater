@@ -1,7 +1,4 @@
-import { Command, Menu, Moon, Plus, Search, Sun } from 'lucide-react';
-import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { useTheme } from '../../context/ThemeContext';
+import { Menu, Plus, Search } from 'lucide-react';
 import { Button } from '../ui/Button';
 
 interface HeaderProps {
@@ -19,8 +16,6 @@ export function Header({
   title = 'Inbox',
   count,
 }: HeaderProps) {
-  const { theme, setTheme } = useTheme();
-
   return (
     <header className="sticky top-0 z-30 bg-[#fcfbf9]/90 dark:bg-[#121417]/90 backdrop-blur-md border-b border-neutral-200/80 dark:border-neutral-800/80 px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
       {/* Zone 1: Brand / Context Title */}

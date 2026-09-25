@@ -2,17 +2,13 @@ import {
   Archive,
   BookOpen,
   CheckCircle2,
-  Compass,
-  Hash,
   Inbox,
   Moon,
   Plus,
   RotateCcw,
-  Sparkles,
   Star,
   Sun
 } from 'lucide-react';
-import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
 import { TagWithCount } from '../../types/item';

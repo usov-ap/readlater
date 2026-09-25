@@ -1,6 +1,10 @@
 import { X } from 'lucide-react';
 import React, { useEffect } from 'react';
 
+// Tracks how many modals are open so that closing one stacked modal does not
+// restore page scrolling while another modal is still visible.
+let openModalCount = 0;
+
 export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -19,18 +23,24 @@ export function Modal({
   maxWidth = 'md',
 }: ModalProps) {
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
         onClose();
       }
     };
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
-    }
+
+    openModalCount += 1;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
-      document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
+      openModalCount = Math.max(0, openModalCount - 1);
+      if (openModalCount === 0) {
+        document.body.style.overflow = '';
+      }
     };
   }, [isOpen, onClose]);
 

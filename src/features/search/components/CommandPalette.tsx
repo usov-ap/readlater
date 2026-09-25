@@ -1,7 +1,6 @@
-import { ExternalLink, Globe, Search, Tag, X } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import { ExternalLink, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatRelativeDate } from '../../../lib/utils';
 import { Item, ItemStatus, ItemType } from '../../../types/item';
 import { itemsRepository } from '../../items/api/localStorageRepository';
 
@@ -17,27 +16,30 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      setQuery('');
-      setLoading(true);
-      itemsRepository.getItems().then((res) => {
+    if (!isOpen) return;
+    let cancelled = false;
+    setQuery('');
+    setLoading(true);
+    itemsRepository
+      .getItems()
+      .then((res) => {
+        if (cancelled) return;
         setItems(res);
         setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load library for search', err);
+        if (!cancelled) setLoading(false);
       });
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
 
-  // Global shortcut ⌘K / Ctrl+K listener
+  // Close on Escape. Opening/closing on ⌘K / Ctrl+K is handled by AppLayout,
+  // which owns the palette's open state.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        if (isOpen) {
-          onClose();
-        } else {
-          // handled by parent or toggle
-        }
-      }
       if (e.key === 'Escape' && isOpen) {
         onClose();
       }

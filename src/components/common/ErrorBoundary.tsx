@@ -1,5 +1,5 @@
 import { AlertTriangle, Home, RefreshCw } from 'lucide-react';
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import { Button } from '../ui/Button';
 
 interface Props {

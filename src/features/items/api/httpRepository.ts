@@ -171,7 +171,15 @@ export class HttpItemsRepository implements ItemsRepository {
   }
 
   async resetToDefaults(): Promise<void> {
-    // Optionally invoke reset if endpoint available
+    const res = await fetch(`${this.baseUrl}/items/reset`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to reset library: ${res.status} ${res.statusText}`);
+    }
+
     this.notify();
   }
 }

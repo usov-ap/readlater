@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AddLinkModal } from '../../features/items/components/AddLinkModal';
 import { useItems } from '../../features/items/hooks/useItems';
 import { itemsRepository } from '../../features/items/api/localStorageRepository';
+import { useToast } from '../../context/ToastContext';
 import { CommandPalette } from '../../features/search/components/CommandPalette';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
@@ -17,9 +18,22 @@ interface AppLayoutProps {
 export function AppLayout({ children, headerTitle, count }: AppLayoutProps) {
   const location = useLocation();
   const { counts, tags, refresh } = useItems();
+  const { showToast } = useToast();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Global ⌘K / Ctrl+K shortcut toggles the command palette
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Определение названия страницы
   const getComputedTitle = () => {
@@ -47,8 +61,14 @@ export function AppLayout({ children, headerTitle, count }: AppLayoutProps) {
 
   const handleResetLibrary = async () => {
     if (window.confirm('Сбросить библиотеку к начальным демонстрационным материалам?')) {
-      await itemsRepository.resetToDefaults();
-      refresh();
+      try {
+        await itemsRepository.resetToDefaults();
+        refresh();
+        showToast({ message: 'Библиотека сброшена к начальным материалам' });
+      } catch (err) {
+        console.error('Failed to reset library', err);
+        showToast({ message: 'Не удалось сбросить библиотеку' });
+      }
     }
   };
 

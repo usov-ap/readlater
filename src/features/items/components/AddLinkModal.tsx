@@ -1,7 +1,7 @@
-import { ArrowRight, Globe, Loader2, Sparkles, Tag as TagIcon } from 'lucide-react';
+import { ArrowRight, Globe, Loader2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { isValidWebUrl, normalizeUrl } from '../../../lib/url';
+import { isValidWebUrl } from '../../../lib/url';
 import { CreateItemInput, Item, ItemType, TagWithCount } from '../../../types/item';
 import { itemsRepository } from '../api/localStorageRepository';
 import { extractMetadata, FetchedMetadata } from '../api/metadataService';
@@ -49,7 +49,13 @@ export function AddLinkModal({ isOpen, onClose, onItemCreated }: AddLinkModalPro
       setError(null);
       setMetadata(null);
       setIsSubmitting(false);
-      itemsRepository.getTags().then(setAvailableTags);
+      setExistingDuplicate(null);
+      setShowDuplicateModal(false);
+      setPendingInput(null);
+      itemsRepository
+        .getTags()
+        .then(setAvailableTags)
+        .catch(() => setAvailableTags([]));
     }
   }, [isOpen]);
 

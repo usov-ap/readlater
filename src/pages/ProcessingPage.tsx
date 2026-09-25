@@ -1,19 +1,28 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { ProcessScreen } from '../features/inbox/components/ProcessScreen';
 import { itemsRepository } from '../features/items/api/localStorageRepository';
 import { Item } from '../types/item';
 
 export function ProcessingPage() {
-  const navigate = useNavigate();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    itemsRepository.getItems({ status: 'inbox' }).then((res) => {
-      setItems(res);
-      setLoading(false);
-    });
+    let cancelled = false;
+    itemsRepository
+      .getItems({ status: 'inbox' })
+      .then((res) => {
+        if (cancelled) return;
+        setItems(res);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load inbox queue', err);
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {

@@ -1,5 +1,5 @@
 import { ArrowLeft, CheckCircle2, Clock, Plus, Star, Trash2 } from 'lucide-react';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { AddLinkModal } from '../../items/components/AddLinkModal';
 

@@ -1,5 +1,4 @@
 import { Archive, BookOpen, CheckCircle2, Inbox, Star } from 'lucide-react';
-import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 interface MobileNavProps {

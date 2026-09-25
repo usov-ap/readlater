@@ -13,11 +13,11 @@ import {
   Trash2,
   Video
 } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../../context/ToastContext';
 import { formatRelativeDate } from '../../../lib/utils';
-import { Item, ItemStatus, ItemType } from '../../../types/item';
+import { Item, ItemType } from '../../../types/item';
 import { itemsRepository } from '../../items/api/localStorageRepository';
 import { Button } from '../../../components/ui/Button';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';

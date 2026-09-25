@@ -1,5 +1,5 @@
-import { ArrowRight, Inbox, Plus, Sparkles } from 'lucide-react';
-import React, { useState } from 'react';
+import { ArrowRight } from 'lucide-react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
 import { Button } from '../components/ui/Button';

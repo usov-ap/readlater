@@ -12,7 +12,7 @@ import {
   Trash2,
   Video
 } from 'lucide-react';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatRelativeDate } from '../../../lib/utils';
 import { Item, ItemStatus, ItemType } from '../../../types/item';

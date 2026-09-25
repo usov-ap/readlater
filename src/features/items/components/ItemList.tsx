@@ -1,6 +1,6 @@
-import { ArrowUpDown, Filter, Layers } from 'lucide-react';
-import React, { useState } from 'react';
-import { Item, ItemFilter, ItemStatus, ItemType, SortOption } from '../../../types/item';
+import { ArrowUpDown, Layers } from 'lucide-react';
+import { useState } from 'react';
+import { Item, ItemStatus, ItemType, SortOption } from '../../../types/item';
 import { CardSkeleton } from '../../../components/ui/Skeleton';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { ItemCard } from './ItemCard';

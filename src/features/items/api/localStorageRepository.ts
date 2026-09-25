@@ -6,6 +6,17 @@ import { ItemsRepository } from './repository';
 
 const STORAGE_KEY = 'readlater_items_v3';
 
+/**
+ * Returns a copy of the seed items so in-place repository mutations
+ * (unshift/splice/sort) never pollute the shared INITIAL_ITEMS constant.
+ */
+function cloneItems(items: Item[]): Item[] {
+  return items.map((item) => ({
+    ...item,
+    tags: Array.isArray(item.tags) ? item.tags.map((tag) => ({ ...tag })) : [],
+  }));
+}
+
 export class LocalStorageItemsRepository implements ItemsRepository {
   private listeners: Set<() => void> = new Set();
 
@@ -38,18 +49,18 @@ export class LocalStorageItemsRepository implements ItemsRepository {
   }
 
   private loadRaw(): Item[] {
-    if (typeof window === 'undefined') return INITIAL_ITEMS;
+    if (typeof window === 'undefined') return cloneItems(INITIAL_ITEMS);
     try {
       const data = localStorage.getItem(STORAGE_KEY);
       if (!data) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_ITEMS));
-        return INITIAL_ITEMS;
+        return cloneItems(INITIAL_ITEMS);
       }
       const parsed = JSON.parse(data);
       if (!Array.isArray(parsed)) {
         console.warn('Storage data is not an array, falling back to initial items');
         localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_ITEMS));
-        return INITIAL_ITEMS;
+        return cloneItems(INITIAL_ITEMS);
       }
 
       // Sanitize items against corrupted or legacy records
@@ -90,7 +101,7 @@ export class LocalStorageItemsRepository implements ItemsRepository {
       });
     } catch (err) {
       console.error('Failed to parse localStorage data', err);
-      return INITIAL_ITEMS;
+      return cloneItems(INITIAL_ITEMS);
     }
   }
 
@@ -340,7 +351,7 @@ export class LocalStorageItemsRepository implements ItemsRepository {
   }
 
   async resetToDefaults(): Promise<void> {
-    this.saveRaw(INITIAL_ITEMS);
+    this.saveRaw(cloneItems(INITIAL_ITEMS));
   }
 }
 

@@ -14,14 +14,14 @@ import {
   Video,
   X
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
 import { Button } from '../components/ui/Button';
 import { useItem } from '../features/items/hooks/useItem';
 import { itemsRepository } from '../features/items/api/localStorageRepository';
-import { formatFullDate, formatRelativeDate } from '../lib/utils';
-import { ItemStatus, ItemType, TagWithCount } from '../types/item';
+import { formatFullDate } from '../lib/utils';
+import { ItemType, TagWithCount } from '../types/item';
 
 export function ItemDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -37,7 +37,10 @@ export function ItemDetailsPage() {
     if (item) {
       setNotes(item.notes || '');
     }
-    itemsRepository.getTags().then(setAvailableTags);
+    itemsRepository
+      .getTags()
+      .then(setAvailableTags)
+      .catch(() => setAvailableTags([]));
   }, [item]);
 
   const handleNotesChange = (val: string) => {
