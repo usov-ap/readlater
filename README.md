@@ -12,30 +12,29 @@
 
 ```text
 src/
+├── App.tsx               # Корневой компонент
 ├── app/                  # Инициализация приложения, роутер и глобальные провайдеры
-│   ├── App.tsx           # Корневой компонент
 │   ├── router.tsx        # Маршрутизация на базе React Router
 │   └── providers.tsx     # ErrorBoundary, ThemeProvider, ToastProvider
 ├── components/           # Переиспользуемые UI-компоненты и лейауты
 │   ├── common/           # ErrorBoundary, EmptyState
 │   ├── layout/           # AppLayout, Sidebar, Header, MobileNav
-│   └── ui/               # Button, Input, Modal, Skeleton, Toast
+│   └── ui/               # Button, Input, Modal, Skeleton
 ├── context/              # Глобальные контексты приложения
 │   ├── ThemeContext.tsx  # Переключение и синхронизация тем (Светлая / Тёмная / Системная)
 │   └── ToastContext.tsx  # Всплывающие уведомления с поддержкой Undo (отмены действий)
 ├── features/             # Предметные модули (Feature-driven slices)
 │   ├── inbox/            # Механизм быстрого разбора Inbox и горячие клавиши
-│   │   ├── components/   # ProcessScreen, ProcessCompletion, KeyboardShortcutsDialog
-│   │   └── types.ts
+│   │   └── components/   # ProcessScreen, ProcessCompletion, KeyboardShortcutsDialog
 │   ├── items/            # Управление материалами, карточки, списки, метаданные и хранение
-│   │   ├── api/          # Абстракция ItemsRepository, LocalStorageRepository, MetadataService
+│   │   ├── api/          # ItemsRepository, LocalStorageItemsRepository, HttpItemsRepository, MetadataService
 │   │   ├── components/   # ItemCard, ItemList, AddLinkModal, DuplicateWarningDialog
 │   │   ├── hooks/        # useItems, useItem
 │   │   └── seedData.ts   # Начальный набор демонстрационных материалов
 │   └── search/           # Командная строка глобального поиска (⌘K / Ctrl+K)
 ├── lib/                  # Чистые утилиты и хелперы
 │   ├── url.ts            # Валидация протоколов, нормализация URL, автоопределение типов
-│   └── utils.ts          # Относительные даты, генераторы ID, типографика
+│   └── utils.ts          # Форматирование дат и генерация ID
 ├── pages/                # Страницы разделов приложения
 │   ├── InboxPage.tsx     # Входящие материалы, требующие разбора
 │   ├── ProcessingPage.tsx# Экран пошаговой обработки Inbox
@@ -65,21 +64,28 @@ export interface ItemsRepository {
   restoreItem(item: Item): Promise<void>;
   findByUrl(url: string): Promise<Item | null>;
   getTags(): Promise<TagWithCount[]>;
-  getStatusCounts(): Promise<Record<string, number>>;
+  getStatusCounts(): Promise<{
+    inbox: number;
+    reading: number;
+    completed: number;
+    favorites: number;
+    archived: number;
+    all: number;
+  }>;
   resetToDefaults(): Promise<void>;
   subscribe(callback: () => void): () => void;
 }
 ```
 
-* **Текущая реализация**: `LocalStorageItemsRepository` (ключ `readlater_items_v3`). Поддерживает валидацию и санитаризацию данных при загрузке, отказоустойчивость при переполнении квоты, а также реактивную синхронизацию между вкладками браузера через событие `storage` и внутреннюю подписку (`subscribe`).
-* **План перехода на бэкенд (Go + PostgreSQL)**: Для подключения серверного API достаточно создать класс `HttpItemsRepository`, реализующий `ItemsRepository`. Ни один компонент пользовательского интерфейса менять не потребуется.
+* **LocalStorage-режим**: `LocalStorageItemsRepository` (ключ `readlater_items_v3`) — используется при запуске без переменной `VITE_API_BASE_URL` (standalone/offline). Поддерживает валидацию и санитаризацию данных при загрузке, отказоустойчивость при переполнении квоты, а также реактивную синхронизацию между вкладками браузера через событие `storage` и внутреннюю подписку (`subscribe`).
+* **Серверный режим**: `HttpItemsRepository` — используется автоматически, когда задана `VITE_API_BASE_URL` (в Docker Compose это `/api`). Обращается к REST API на Go + PostgreSQL (`/api/items`, `/api/items/:id`, `/api/items/by-url`, `/api/items/restore`, `/api/items/reset`, `/api/tags`, `/api/counts`). Интерфейс `ItemsRepository` полностью изолирует UI от источника данных, поэтому переключение режимов не требует изменений в компонентах.
 
 ---
 
 ## Ключевые возможности
 
 ### 1. Быстрое сохранение ссылок (Add Link)
-* **Строгая валидация URL**: Разрешены только протоколы `http://` и `https://`, предотвращаются уязвимости (XSS через `javascript:` или `data:`).
+* **Строгая валидация URL**: Разрешены только протоколы `http://` и `https://`, предотвращаются уязвимости (XSS через `javascript:` или `data:`). Проверка выполняется и в UI, и на сервере (Go API), поэтому некорректный URL нельзя сохранить в обход клиента.
 * **Очистка от трекинга**: Автоматическое вырезание маркетинговых параметров (`utm_*`, `fbclid`, `gclid`, `yclid`, `ref` и др.).
 * **Проверка дубликатов**: Мгновенный поиск совпадений по нормализованному URL с возможностью перейти к существующей карточке или сохранить повторно.
 * **Автоматическое извлечение метаданных**: Определение названия, описания, домена, фавиконки и типа контента (статья, видео, документация, репозиторий GitHub, новость, пост). Процесс не блокирует сохранение даже при сетевых сбоях.
@@ -121,13 +127,75 @@ export interface ItemsRepository {
 
 ### 5. Глобальный поиск (`⌘K` / `Ctrl+K`)
 * Полнотекстовый поиск по заголовкам, URL, доменам, кратким описаниям, тегам и личным заметкам.
-* Клавиатурная навигация и моментальный переход к карточке.
+* Мгновенный переход к карточке по клику; закрытие по `Esc`. Шорткат `⌘K` / `Ctrl+K` переключает палитру глобально (`AppLayout`).
 
 ### 6. Дизайн и доступность
 * Гарнитура `Plus Jakarta Sans` в паре с `JetBrains Mono` для табличных цифр и метаданных.
 * Тёмная, светлая и системная темы оформления.
 * Доступность: атрибуты `role="dialog"`, `aria-modal="true"`, русскоязычные `aria-label`, перехват клавиши `Escape`.
 * Отказоустойчивость: глобальный `ErrorBoundary` перехватывает ошибки рендеринга и предлагает перезагрузку или возврат в библиотеку.
+
+---
+
+## Локальная разработка
+
+### Только фронтенд (LocalStorage, без бэкенда)
+
+```bash
+npm install
+npm run dev          # http://localhost:3000
+```
+
+Если переменная `VITE_API_BASE_URL` не задана, приложение автоматически использует
+`LocalStorageItemsRepository` и работает полностью в браузере (данные хранятся в
+`localStorage` под ключом `readlater_items_v3`).
+
+### Полный стек (Go + PostgreSQL + фронтенд)
+
+```bash
+# 1. Бэкенд (нужен доступный PostgreSQL)
+cd backend
+DATABASE_URL='postgres://readlater:secret@127.0.0.1:5432/readlater?sslmode=disable' \
+  PORT=8080 go run .
+
+# 2. Фронтенд: VITE_API_BASE_URL=/api включает HttpItemsRepository,
+#    а Vite проксирует /api на бэкенд (см. vite.config.ts).
+VITE_API_BASE_URL=/api npm run dev
+```
+
+Цель прокси по умолчанию — `http://127.0.0.1:8080`, её можно переопределить
+переменной `VITE_API_PROXY_TARGET`.
+
+### Полезные команды
+
+```bash
+npm run lint     # tsc --noEmit
+npm run build    # production-сборка в dist/
+```
+
+---
+
+## REST API (Go)
+
+Бэкенд слушает `/api` (по умолчанию порт `8080`) и отдаёт JSON. Health-check
+доступен как по `/health`, так и по `/api/health`.
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| `GET` | `/api/items` | Список материалов. Query: `status`, `isFavorite`, `type`, `tag`, `search`, `sort` (`newest` / `oldest` / `recently_updated` / `recently_read`) |
+| `POST` | `/api/items` | Создать материал (URL обязателен; допускаются только `http://` и `https://`) |
+| `GET` | `/api/items/by-url?url=...` | Найти материал по нормализованному URL (проверка дубликатов) |
+| `POST` | `/api/items/restore` | Восстановить удалённый материал (Undo) |
+| `POST` | `/api/items/reset` | Сбросить библиотеку и заново создать стартовый материал |
+| `GET` | `/api/items/:id` | Получить материал по ID |
+| `PUT` / `PATCH` | `/api/items/:id` | Частично обновить материал |
+| `DELETE` | `/api/items/:id` | Удалить материал (возвращает удалённую запись для Undo) |
+| `GET` | `/api/tags` | Теги с количеством (без учёта архивных) |
+| `GET` | `/api/counts` | Счётчики по статусам и избранному |
+
+При создании URL нормализуется: удаляются трекинг-параметры (`utm_*`, `fbclid`,
+`gclid`, `yclid`, `ref`, `source`, `mc_*` и др.), хвостовой слэш и фрагмент, а хост
+приводится к нижнему регистру. Схема БД создаётся автоматически при старте.
 
 ---
 
@@ -149,7 +217,7 @@ External Reverse Proxy (Nginx / Caddy / Traefik на хосте)
 
 ```bash
 # 1. Клонируйте репозиторий
-git clone https://github.com/your-username/readlater.git
+git clone https://github.com/usov-ap/readlater.git
 cd readlater
 
 # 2. Скопируйте файл конфигурации и задайте надёжный пароль БД
@@ -310,4 +378,5 @@ docker compose up -d
 - [ ] Режим чтения (Reader View) с извлечением чистого текста для чтения оффлайн.
 - [ ] Откладывание на заданный срок (Snooze: «Напомнить завтра», «Напомнить через неделю»).
 - [ ] Импорт закладок из Chrome, Pocket и Raindrop (форматы HTML / CSV).
-- [ ] Полноценный бэкенд на Go + PostgreSQL с синхронизацией между устройствами.
+- [x] Бэкенд на Go + PostgreSQL (`backend/`) с переключением фронтенда через `VITE_API_BASE_URL`.
+- [ ] Аутентификация и синхронизация между устройствами/пользователями.
