@@ -25,23 +25,23 @@ type Tag struct {
 }
 
 type Item struct {
-	ID          string   `json:"id"`
-	URL         string   `json:"url"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	ImageURL    *string  `json:"imageUrl,omitempty"`
-	FaviconURL  *string  `json:"faviconUrl,omitempty"`
-	SiteName    *string  `json:"siteName,omitempty"`
-	Author      *string  `json:"author,omitempty"`
-	PublishedAt *string  `json:"publishedAt,omitempty"`
-	Type        string   `json:"type"`
-	Status      string   `json:"status"`
-	IsFavorite  bool     `json:"isFavorite"`
-	Tags        []Tag    `json:"tags"`
-	Notes       string   `json:"notes"`
-	ReadAt      *string  `json:"readAt,omitempty"`
-	CreatedAt   string   `json:"createdAt"`
-	UpdatedAt   string   `json:"updatedAt"`
+	ID          string  `json:"id"`
+	URL         string  `json:"url"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	ImageURL    *string `json:"imageUrl,omitempty"`
+	FaviconURL  *string `json:"faviconUrl,omitempty"`
+	SiteName    *string `json:"siteName,omitempty"`
+	Author      *string `json:"author,omitempty"`
+	PublishedAt *string `json:"publishedAt,omitempty"`
+	Type        string  `json:"type"`
+	Status      string  `json:"status"`
+	IsFavorite  bool    `json:"isFavorite"`
+	Tags        []Tag   `json:"tags"`
+	Notes       string  `json:"notes"`
+	ReadAt      *string `json:"readAt,omitempty"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
 }
 
 type TagWithCount struct {
@@ -119,31 +119,40 @@ func initDB() error {
 		connStr = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, pass, host, port, dbname)
 	}
 
-	var err error
-	// Retry loop for Docker Compose cold start
-	for attempts := 1; attempts <= 30; attempts++ {
-		db, err = sql.Open("postgres", connStr)
-		if err == nil {
-			err = db.Ping()
-			if err == nil {
-				log.Printf("Successfully connected to PostgreSQL after %d attempt(s)", attempts)
-				break
-			}
-		}
-		log.Printf("Waiting for PostgreSQL connection (attempt %d/30): %v", attempts, err)
-		time.Sleep(2 * time.Second)
-	}
-
+	pool, err := sql.Open("postgres", connStr)
 	if err != nil {
-		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
+		return fmt.Errorf("failed to open PostgreSQL connection: %w", err)
 	}
+	pool.SetMaxOpenConns(10)
+	pool.SetMaxIdleConns(5)
+	pool.SetConnMaxLifetime(30 * time.Minute)
+
+	// Retry loop for Docker Compose cold start. The pool is opened once and
+	// only pinged repeatedly, so we do not leak connections on every attempt.
+	var pingErr error
+	for attempts := 1; attempts <= 30; attempts++ {
+		pingErr = pool.Ping()
+		if pingErr == nil {
+			log.Printf("Successfully connected to PostgreSQL after %d attempt(s)", attempts)
+			break
+		}
+		log.Printf("Waiting for PostgreSQL connection (attempt %d/30): %v", attempts, pingErr)
+		if attempts < 30 {
+			time.Sleep(2 * time.Second)
+		}
+	}
+	if pingErr != nil {
+		_ = pool.Close()
+		return fmt.Errorf("failed to connect to PostgreSQL: %w", pingErr)
+	}
+	db = pool
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS items (
 		id VARCHAR(64) PRIMARY KEY,
 		url TEXT NOT NULL,
 		title TEXT NOT NULL,
-		description TEXT DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
 		image_url TEXT,
 		favicon_url TEXT,
 		site_name TEXT,
@@ -170,23 +179,36 @@ func initDB() error {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
-	// Seed starter item if table is empty
+	return seedInitialItem()
+}
+
+// seedInitialItem inserts a welcome item when the library is empty.
+func seedInitialItem() error {
 	var count int
-	_ = db.QueryRow("SELECT COUNT(*) FROM items").Scan(&count)
-	if count == 0 {
-		starterTags, _ := json.Marshal([]Tag{
-			{ID: "tag-go", Name: "go"},
-			{ID: "tag-programming", Name: "programming"},
-		})
-		now := time.Now().UTC()
-		_, _ = db.Exec(`
+	if err := db.QueryRow("SELECT COUNT(*) FROM items").Scan(&count); err != nil {
+		return fmt.Errorf("failed to count items: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+
+	starterTags, err := json.Marshal([]Tag{
+		{ID: "tag-go", Name: "go"},
+		{ID: "tag-programming", Name: "programming"},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to encode seed tags: %w", err)
+	}
+	now := time.Now().UTC()
+	if _, err := db.Exec(`
 			INSERT INTO items (id, url, title, description, site_name, type, status, is_favorite, tags, notes, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		`, "seed-effective-go", "https://go.dev/doc/effective_go", "Effective Go",
-			"Советы по написанию чистого, идиоматичного кода на языке Go: форматирование, соглашения об именовании и параллелизм.",
-			"Go.dev", "documentation", "inbox", false, starterTags, "Перечитать раздел про goroutines и каналы.", now, now)
-		log.Println("Seeded initial welcome item")
+		"Советы по написанию чистого, идиоматичного кода на языке Go: форматирование, соглашения об именовании и параллелизм.",
+		"Go.dev", "documentation", "inbox", false, starterTags, "Перечитать раздел про goroutines и каналы.", now, now); err != nil {
+		return fmt.Errorf("failed to seed initial item: %w", err)
 	}
+	log.Println("Seeded initial welcome item")
 
 	return nil
 }
@@ -222,14 +244,20 @@ func parseTags(raw json.RawMessage) []Tag {
 	}
 	// Try parsing []Tag
 	var tags []Tag
-	if err := json.Unmarshal(raw, &tags); err == nil && len(tags) > 0 {
-		for i := range tags {
-			tags[i].Name = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(tags[i].Name), "#"))
-			if tags[i].ID == "" {
-				tags[i].ID = "tag-" + tags[i].Name
+	if err := json.Unmarshal(raw, &tags); err == nil {
+		result := make([]Tag, 0, len(tags))
+		for _, t := range tags {
+			name := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(t.Name), "#"))
+			if name == "" {
+				continue
 			}
+			id := t.ID
+			if id == "" {
+				id = "tag-" + name
+			}
+			result = append(result, Tag{ID: id, Name: name})
 		}
-		return tags
+		return result
 	}
 
 	// Try parsing []string
@@ -254,10 +282,13 @@ func normalizeURL(rawURL string) string {
 		return strings.TrimSpace(rawURL)
 	}
 
-	// Remove tracking query params
+	// Remove tracking query params (mirrors the frontend list in src/lib/url.ts)
 	tracking := map[string]bool{
 		"utm_source": true, "utm_medium": true, "utm_campaign": true,
-		"utm_term": true, "utm_content": true, "fbclid": true, "gclid": true, "ref": true,
+		"utm_term": true, "utm_content": true, "utm_id": true,
+		"fbclid": true, "gclid": true, "yclid": true,
+		"ref": true, "ref_src": true, "ref_url": true, "source": true,
+		"mc_cid": true, "mc_eid": true, "_hsenc": true, "_hsmi": true, "si": true,
 	}
 
 	query := parsed.Query()
@@ -267,8 +298,20 @@ func normalizeURL(rawURL string) string {
 	parsed.RawQuery = query.Encode()
 	parsed.Host = strings.ToLower(parsed.Host)
 	parsed.Fragment = ""
+	if len(parsed.Path) > 1 && strings.HasSuffix(parsed.Path, "/") {
+		parsed.Path = strings.TrimSuffix(parsed.Path, "/")
+	}
 
 	return parsed.String()
+}
+
+// isValidWebURL reports whether rawURL uses a safe http(s) scheme.
+func isValidWebURL(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -444,6 +487,10 @@ func handleCreateItem(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, "URL is required")
 		return
 	}
+	if !isValidWebURL(payload.URL) {
+		errorResponse(w, http.StatusBadRequest, "Only http:// and https:// URLs are allowed")
+		return
+	}
 
 	normURL := normalizeURL(payload.URL)
 	title := strings.TrimSpace(payload.Title)
@@ -470,7 +517,7 @@ func handleCreateItem(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	newItem := Item{
 		ID:          generateID(),
-		URL:         strings.TrimSpace(payload.URL),
+		URL:         normURL,
 		Title:       title,
 		Description: strings.TrimSpace(payload.Description),
 		ImageURL:    payload.ImageURL,
@@ -503,7 +550,6 @@ func handleCreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = normURL
 	jsonResponse(w, http.StatusCreated, newItem)
 }
 
@@ -529,6 +575,10 @@ func handleUpdateItem(w http.ResponseWriter, r *http.Request, id string) {
 	)
 	if err == sql.ErrNoRows {
 		errorResponse(w, http.StatusNotFound, "Item not found")
+		return
+	} else if err != nil {
+		log.Printf("Fetch for update failed: %v", err)
+		errorResponse(w, http.StatusInternalServerError, "Failed to load item")
 		return
 	}
 
@@ -614,6 +664,10 @@ func handleDeleteItem(w http.ResponseWriter, r *http.Request, id string) {
 	if err == sql.ErrNoRows {
 		errorResponse(w, http.StatusNotFound, "Item not found")
 		return
+	} else if err != nil {
+		log.Printf("Fetch for delete failed: %v", err)
+		errorResponse(w, http.StatusInternalServerError, "Failed to load item")
+		return
 	}
 
 	_, err = db.Exec("DELETE FROM items WHERE id = $1", id)
@@ -643,6 +697,9 @@ func handleRestoreItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if item.Tags == nil {
+		item.Tags = []Tag{}
+	}
 	tagsJSON, _ := json.Marshal(item.Tags)
 	now := time.Now().UTC()
 
@@ -755,6 +812,22 @@ func handleGetCounts(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, counts)
 }
 
+// handleResetItems wipes the library and re-inserts the starter item.
+func handleResetItems(w http.ResponseWriter, r *http.Request) {
+	if _, err := db.Exec("DELETE FROM items"); err != nil {
+		log.Printf("Reset error: %v", err)
+		errorResponse(w, http.StatusInternalServerError, "Failed to reset library")
+		return
+	}
+	if err := seedInitialItem(); err != nil {
+		log.Printf("Reset seed error: %v", err)
+		errorResponse(w, http.StatusInternalServerError, "Failed to reset library")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
 func main() {
 	if err := initDB(); err != nil {
 		log.Fatalf("Database initialization failed: %v", err)
@@ -784,6 +857,14 @@ func main() {
 	mux.HandleFunc("/api/items/restore", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			handleRestoreItem(w, r)
+		} else {
+			errorResponse(w, http.StatusMethodNotAllowed, "Method not allowed")
+		}
+	})
+
+	mux.HandleFunc("/api/items/reset", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handleResetItems(w, r)
 		} else {
 			errorResponse(w, http.StatusMethodNotAllowed, "Method not allowed")
 		}

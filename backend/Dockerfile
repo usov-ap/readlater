@@ -4,12 +4,16 @@ FROM golang:1.22-alpine3.19 AS builder
 WORKDIR /build
 
 # Pre-fetch dependencies
-COPY go.mod go.sum* ./
-RUN go mod download || true
+COPY go.mod go.sum ./
+RUN go mod download
 
 # Copy source code and build statically linked binary
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o readlater-api .
+# TARGETARCH is injected by BuildKit for multi-arch builds
+# (plain `docker build` leaves it empty, so default to amd64).
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH:-amd64}" \
+    go build -trimpath -ldflags="-s -w" -o readlater-api .
 
 # Stage 2: Minimal non-root runtime image
 FROM alpine:3.19
