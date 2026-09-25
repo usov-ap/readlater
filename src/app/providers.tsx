@@ -1,5 +1,6 @@
 import React from 'react';
 import { ErrorBoundary } from '../components/common/ErrorBoundary';
+import { AuthProvider } from '../context/AuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import { ToastProvider } from '../context/ToastContext';
 
@@ -8,7 +9,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ErrorBoundary>
       <ThemeProvider>
         <ToastProvider>
-          {children}
+          <AuthProvider>{children}</AuthProvider>
         </ToastProvider>
       </ThemeProvider>
     </ErrorBoundary>

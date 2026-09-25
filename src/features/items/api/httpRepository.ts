@@ -1,5 +1,14 @@
+import { authHeaders, clearPassword } from '../../../lib/auth';
 import { CreateItemInput, Item, ItemFilter, TagWithCount, UpdateItemInput } from '../../../types/item';
 import { ItemsRepository } from './repository';
+
+/** Пароль больше не подходит — просим войти заново. */
+function notifyUnauthorized() {
+  clearPassword();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('readlater:unauthorized'));
+  }
+}
 
 export class HttpItemsRepository implements ItemsRepository {
   private baseUrl: string;
@@ -28,6 +37,24 @@ export class HttpItemsRepository implements ItemsRepository {
     });
   }
 
+  /** Единая точка запросов: подставляет пароль и обрабатывает 401. */
+  private async request(path: string, init: RequestInit = {}): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      ...init,
+      headers: {
+        Accept: 'application/json',
+        ...authHeaders(),
+        ...(init.headers as Record<string, string> | undefined),
+      },
+    });
+
+    if (res.status === 401) {
+      notifyUnauthorized();
+    }
+
+    return res;
+  }
+
   async getItems(filter?: ItemFilter): Promise<Item[]> {
     const params = new URLSearchParams();
     if (filter?.status) params.append('status', filter.status);
@@ -38,9 +65,7 @@ export class HttpItemsRepository implements ItemsRepository {
     if (filter?.sort) params.append('sort', filter.sort);
 
     const queryString = params.toString() ? `?${params.toString()}` : '';
-    const res = await fetch(`${this.baseUrl}/items${queryString}`, {
-      headers: { Accept: 'application/json' },
-    });
+    const res = await this.request(`/items${queryString}`);
 
     if (!res.ok) {
       throw new Error(`Failed to fetch items: ${res.status} ${res.statusText}`);
@@ -50,9 +75,7 @@ export class HttpItemsRepository implements ItemsRepository {
   }
 
   async getItem(id: string): Promise<Item | null> {
-    const res = await fetch(`${this.baseUrl}/items/${encodeURIComponent(id)}`, {
-      headers: { Accept: 'application/json' },
-    });
+    const res = await this.request(`/items/${encodeURIComponent(id)}`);
 
     if (res.status === 404) {
       return null;
@@ -65,9 +88,7 @@ export class HttpItemsRepository implements ItemsRepository {
   }
 
   async findByUrl(rawUrl: string): Promise<Item | null> {
-    const res = await fetch(`${this.baseUrl}/items/by-url?url=${encodeURIComponent(rawUrl)}`, {
-      headers: { Accept: 'application/json' },
-    });
+    const res = await this.request(`/items/by-url?url=${encodeURIComponent(rawUrl)}`);
 
     if (res.status === 404) return null;
     if (!res.ok) return null;
@@ -77,9 +98,9 @@ export class HttpItemsRepository implements ItemsRepository {
   }
 
   async createItem(input: CreateItemInput): Promise<Item> {
-    const res = await fetch(`${this.baseUrl}/items`, {
+    const res = await this.request('/items', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
 
@@ -94,9 +115,9 @@ export class HttpItemsRepository implements ItemsRepository {
   }
 
   async updateItem(id: string, input: UpdateItemInput): Promise<Item> {
-    const res = await fetch(`${this.baseUrl}/items/${encodeURIComponent(id)}`, {
+    const res = await this.request(`/items/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
 
@@ -111,9 +132,8 @@ export class HttpItemsRepository implements ItemsRepository {
   }
 
   async deleteItem(id: string): Promise<Item> {
-    const res = await fetch(`${this.baseUrl}/items/${encodeURIComponent(id)}`, {
+    const res = await this.request(`/items/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: { Accept: 'application/json' },
     });
 
     if (!res.ok) {
@@ -126,9 +146,9 @@ export class HttpItemsRepository implements ItemsRepository {
   }
 
   async restoreItem(item: Item): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/items/restore`, {
+    const res = await this.request('/items/restore', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(item),
     });
 
@@ -140,9 +160,7 @@ export class HttpItemsRepository implements ItemsRepository {
   }
 
   async getTags(): Promise<TagWithCount[]> {
-    const res = await fetch(`${this.baseUrl}/tags`, {
-      headers: { Accept: 'application/json' },
-    });
+    const res = await this.request('/tags');
 
     if (!res.ok) {
       return [];
@@ -159,9 +177,7 @@ export class HttpItemsRepository implements ItemsRepository {
     archived: number;
     all: number;
   }> {
-    const res = await fetch(`${this.baseUrl}/counts`, {
-      headers: { Accept: 'application/json' },
-    });
+    const res = await this.request('/counts');
 
     if (!res.ok) {
       return { inbox: 0, reading: 0, completed: 0, favorites: 0, archived: 0, all: 0 };
@@ -171,9 +187,8 @@ export class HttpItemsRepository implements ItemsRepository {
   }
 
   async resetToDefaults(): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/items/reset`, {
+    const res = await this.request('/items/reset', {
       method: 'POST',
-      headers: { Accept: 'application/json' },
     });
 
     if (!res.ok) {

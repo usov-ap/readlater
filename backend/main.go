@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -236,6 +237,50 @@ func jsonResponse(w http.ResponseWriter, statusCode int, data interface{}) {
 
 func errorResponse(w http.ResponseWriter, statusCode int, message string) {
 	jsonResponse(w, statusCode, map[string]string{"error": message})
+}
+
+// appPassword is the single shared password from APP_PASSWORD. Empty means the
+// optional protection is disabled (default, fully backward compatible).
+var appPassword = ""
+
+// validAuthToken reports whether the request carries the correct password.
+func validAuthToken(r *http.Request) bool {
+	if appPassword == "" {
+		return true
+	}
+	const prefix = "Bearer "
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, prefix) {
+		return false
+	}
+	token := strings.TrimPrefix(header, prefix)
+	return subtle.ConstantTimeCompare([]byte(token), []byte(appPassword)) == 1
+}
+
+// authMiddleware gates the API behind APP_PASSWORD when it is set. Health
+// checks and the auth-status probe stay public.
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health", "/api/health", "/api/auth/status":
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !validAuthToken(r) {
+			errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// handleAuthStatus tells the SPA whether a password is required and whether the
+// supplied token is accepted.
+func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
+	jsonResponse(w, http.StatusOK, map[string]bool{
+		"required":      appPassword != "",
+		"authenticated": validAuthToken(r),
+	})
 }
 
 func parseTags(raw json.RawMessage) []Tag {
@@ -839,11 +884,21 @@ func main() {
 		port = "8080"
 	}
 
+	appPassword = os.Getenv("APP_PASSWORD")
+	if appPassword != "" {
+		log.Println("Password protection enabled (APP_PASSWORD is set)")
+	} else {
+		log.Println("Password protection disabled (APP_PASSWORD is empty)")
+	}
+
 	mux := http.NewServeMux()
 
 	// Health check (top-level and /api prefix)
 	mux.HandleFunc("/health", handleHealth)
 	mux.HandleFunc("/api/health", handleHealth)
+
+	// Auth status probe (public, used by the login screen)
+	mux.HandleFunc("/api/auth/status", handleAuthStatus)
 
 	// API Routes
 	mux.HandleFunc("/api/items/by-url", func(w http.ResponseWriter, r *http.Request) {
@@ -918,7 +973,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:         ":" + port,
-		Handler:      corsMiddleware(mux),
+		Handler:      corsMiddleware(authMiddleware(mux)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

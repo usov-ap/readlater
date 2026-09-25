@@ -30,6 +30,8 @@ services:
     environment:
       - PORT=8080
       - DATABASE_URL=postgres://${POSTGRES_USER:-readlater}:${POSTGRES_PASSWORD:-readlater_secret}@postgres:5432/${POSTGRES_DB:-readlater}?sslmode=disable
+      # Пусто = защита паролем выключена.
+      - APP_PASSWORD=${APP_PASSWORD:-}
     networks:
       - readlater-network
     depends_on:

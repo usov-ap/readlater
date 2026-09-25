@@ -17,10 +17,12 @@ src/
 │   ├── router.tsx        # Маршрутизация на базе React Router
 │   └── providers.tsx     # ErrorBoundary, ThemeProvider, ToastProvider
 ├── components/           # Переиспользуемые UI-компоненты и лейауты
+│   ├── auth/             # AuthGate, LoginScreen (простой экран ввода пароля)
 │   ├── common/           # ErrorBoundary, EmptyState
 │   ├── layout/           # AppLayout, Sidebar, Header, MobileNav
 │   └── ui/               # Button, Input, Modal, Skeleton
 ├── context/              # Глобальные контексты приложения
+│   ├── AuthContext.tsx   # Проверка пароля и состояние входа (APP_PASSWORD)
 │   ├── ThemeContext.tsx  # Переключение и синхронизация тем (Светлая / Тёмная / Системная)
 │   └── ToastContext.tsx  # Всплывающие уведомления с поддержкой Undo (отмены действий)
 ├── features/             # Предметные модули (Feature-driven slices)
@@ -33,6 +35,7 @@ src/
 │   │   └── seedData.ts   # Начальный набор демонстрационных материалов
 │   └── search/           # Командная строка глобального поиска (⌘K / Ctrl+K)
 ├── lib/                  # Чистые утилиты и хелперы
+│   ├── auth.ts           # Хранение пароля и заголовки Authorization
 │   ├── url.ts            # Валидация протоколов, нормализация URL, автоопределение типов
 │   └── utils.ts          # Форматирование дат и генерация ID
 ├── pages/                # Страницы разделов приложения
@@ -137,6 +140,35 @@ export interface ItemsRepository {
 
 ---
 
+## Защита паролем (опционально)
+
+Самая простая защита входа: один общий пароль, без пользователей, регистрации и сессий.
+
+Включение — задайте пароль в `.env` и перезапустите бэкенд:
+
+```bash
+# .env
+APP_PASSWORD=ваш-пароль
+
+docker compose up -d backend
+```
+
+Как это работает:
+
+* При открытии сайта показывается экран ввода пароля.
+* Пароль хранится в `localStorage` браузера и отправляется к API в заголовке
+  `Authorization: Bearer <пароль>`.
+* Защищены все маршруты `/api/*`, кроме `/api/auth/status`. Проверка `/health`
+  и `/api/health` тоже остаётся публичной — она нужна для healthcheck и мониторинга.
+* Кнопка «Выйти» в футере сайдбара удаляет сохранённый пароль.
+* Если `APP_PASSWORD` пуст — защита выключена (поведение по умолчанию).
+
+Важно: пароль передаётся в заголовке, поэтому открывайте сайт только по HTTPS.
+Это лёгкая защита «от посторонних глаз», а не полноценная аутентификация:
+пользователей нет, сессии не сохраняются, ограничения на число попыток входа нет.
+
+---
+
 ## Локальная разработка
 
 ### Только фронтенд (LocalStorage, без бэкенда)
@@ -182,6 +214,7 @@ npm run build    # production-сборка в dist/
 
 | Метод | Путь | Назначение |
 |---|---|---|
+| `GET` | `/api/auth/status` | Требуется ли пароль и принят ли текущий токен (публичный) |
 | `GET` | `/api/items` | Список материалов. Query: `status`, `isFavorite`, `type`, `tag`, `search`, `sort` (`newest` / `oldest` / `recently_updated` / `recently_read`) |
 | `POST` | `/api/items` | Создать материал (URL обязателен; допускаются только `http://` и `https://`) |
 | `GET` | `/api/items/by-url?url=...` | Найти материал по нормализованному URL (проверка дубликатов) |
@@ -220,7 +253,8 @@ External Reverse Proxy (Nginx / Caddy / Traefik на хосте)
 git clone https://github.com/usov-ap/readlater.git
 cd readlater
 
-# 2. Скопируйте файл конфигурации и задайте надёжный пароль БД
+# 2. Скопируйте файл конфигурации, задайте надёжный пароль БД
+#    и (при желании) пароль для входа в APP_PASSWORD
 cp .env.example .env
 nano .env
 

@@ -3,6 +3,7 @@ import {
   BookOpen,
   CheckCircle2,
   Inbox,
+  LogOut,
   Moon,
   Plus,
   RotateCcw,
@@ -26,9 +27,10 @@ interface SidebarProps {
   tags: TagWithCount[];
   onOpenAddModal: () => void;
   onResetLibrary?: () => void;
+  onLogout?: () => void;
 }
 
-export function Sidebar({ counts, tags, onOpenAddModal, onResetLibrary }: SidebarProps) {
+export function Sidebar({ counts, tags, onOpenAddModal, onResetLibrary, onLogout }: SidebarProps) {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
 
@@ -177,16 +179,29 @@ export function Sidebar({ counts, tags, onOpenAddModal, onResetLibrary }: Sideba
           </button>
         </div>
 
-        {onResetLibrary && (
-          <button
-            onClick={onResetLibrary}
-            className="hover:text-neutral-900 dark:hover:text-neutral-200 text-[11px] flex items-center gap-1 transition-colors"
-            title="Сбросить библиотеку к начальным примерам"
-          >
-            <RotateCcw className="w-3 h-3" />
-            <span>Сброс</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {onResetLibrary && (
+            <button
+              onClick={onResetLibrary}
+              className="hover:text-neutral-900 dark:hover:text-neutral-200 text-[11px] flex items-center gap-1 transition-colors"
+              title="Сбросить библиотеку к начальным примерам"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Сброс</span>
+            </button>
+          )}
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="hover:text-neutral-900 dark:hover:text-neutral-200 text-[11px] flex items-center gap-1 transition-colors"
+              title="Выйти"
+            >
+              <LogOut className="w-3 h-3" />
+              <span>Выйти</span>
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   );

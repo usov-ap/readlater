@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { AddLinkModal } from '../../features/items/components/AddLinkModal';
 import { useItems } from '../../features/items/hooks/useItems';
 import { itemsRepository } from '../../features/items/api/localStorageRepository';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { CommandPalette } from '../../features/search/components/CommandPalette';
 import { Header } from './Header';
@@ -19,6 +20,7 @@ export function AppLayout({ children, headerTitle, count }: AppLayoutProps) {
   const location = useLocation();
   const { counts, tags, refresh } = useItems();
   const { showToast } = useToast();
+  const { isRequired, logout } = useAuth();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -81,6 +83,7 @@ export function AppLayout({ children, headerTitle, count }: AppLayoutProps) {
           tags={tags}
           onOpenAddModal={() => setIsAddModalOpen(true)}
           onResetLibrary={handleResetLibrary}
+          onLogout={isRequired ? logout : undefined}
         />
       </div>
 
@@ -105,6 +108,14 @@ export function AppLayout({ children, headerTitle, count }: AppLayoutProps) {
                 setIsMobileMenuOpen(false);
                 handleResetLibrary();
               }}
+              onLogout={
+                isRequired
+                  ? () => {
+                      setIsMobileMenuOpen(false);
+                      logout();
+                    }
+                  : undefined
+              }
             />
           </div>
         </div>
