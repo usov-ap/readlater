@@ -241,8 +241,8 @@ External Reverse Proxy (Nginx / Caddy / Traefik на хосте)
         │ HTTPS
         ▼
    Docker Host
-   ├── frontend   (порт 127.0.0.1:3000 -> React/Vite SPA через Nginx)
-   ├── backend    (порт 127.0.0.1:8080 -> Go API)
+   ├── frontend   (BIND_ADDR:3000 -> React/Vite SPA через Nginx + прокси /api/)
+   ├── backend    (127.0.0.1:8080 -> Go API, доступен и через /api/ фронтенда)
    └── postgres   (изолированная внутренняя сеть, порт наружу НЕ пробрасывается)
 ```
 
@@ -284,15 +284,35 @@ docker compose up -d
 
 ---
 
-## Сетевые порты и настройка внешнего Reverse Proxy
+## Сетевые порты и доступ
 
-Сервисы привязаны к `127.0.0.1`, чтобы исключить прямой несанкционированный доступ из публичной сети:
+По умолчанию фронтенд публикуется только на `127.0.0.1` — это безопасный вариант,
+когда перед приложением стоит внешний reverse proxy. За это отвечает переменная
+`BIND_ADDR` в `.env`:
+
+| `BIND_ADDR` | Что получается |
+|---|---|
+| `127.0.0.1` (по умолчанию) | Доступ только с самого хоста — для внешнего reverse proxy |
+| `0.0.0.0` | Доступ из локальной сети напрямую по `http://<ip-хоста>:3000` (обязательно задайте `APP_PASSWORD`) |
+
+Nginx фронтенда сам проксирует `/api/` во внутренний backend, поэтому приложение
+работает на одном порту и без внешнего reverse proxy. Бэкенд при этом остаётся
+опубликованным только на `127.0.0.1` (для healthcheck/администрирования).
+
+```bash
+# Открыть доступ из локальной сети
+echo 'BIND_ADDR=0.0.0.0' >> .env
+docker compose up -d
+```
 
 | Сервис | Внутренний порт | Публикация на хосте | Назначение |
 |---|---|---|---|
-| **frontend** | `80` | `127.0.0.1:3000` | Статические файлы SPA (Vite сборка + Nginx fallback) |
-| **backend** | `8080` | `127.0.0.1:8080` | REST API (Go + PostgreSQL) |
+| **frontend** | `80` | `${BIND_ADDR}:${FRONTEND_PORT:-3000}` | Статика SPA + проксирование `/api/` в backend |
+| **backend** | `8080` | `127.0.0.1:${BACKEND_PORT:-8080}` | REST API (Go + PostgreSQL); также доступен через `/api/` фронтенда |
 | **postgres** | `5432` | *Не публикуется* | Доступен только внутри Docker-сети `readlater-network` |
+
+Если порт открыт наружу, не забудьте про firewall хоста (например, `ufw allow 3000/tcp`)
+и обязательно задайте `APP_PASSWORD` из раздела «Защита паролем».
 
 ### Пример конфигурации внешнего Nginx на хосте:
 
@@ -311,7 +331,7 @@ server {
     ssl_certificate /etc/letsencrypt/live/readlater.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/readlater.example.com/privkey.pem;
 
-    # Frontend SPA (статические файлы и клиентский роутинг)
+    # Всё (SPA + /api/) идёт через фронтенд-контейнер
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_set_header Host $host;
@@ -320,7 +340,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Go API Backend
+    # (Необязательно) Прямой маршрут к API в обход фронтенда.
+    # Этот блок можно удалить — тогда /api/ уйдёт через location / выше.
     location /api/ {
         proxy_pass http://127.0.0.1:8080/api/;
         proxy_set_header Host $host;
@@ -329,7 +350,10 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Проверка здоровья бэкенда для мониторинга
+    # Проверка здоровья бэкенда для мониторинга.
+    # Необязательно: если этот блок не добавлять, /health попадёт в location /
+    # выше и nginx фронтенда отдаст index.html с кодом 200 (SPA-fallback),
+    # поэтому для мониторинга маршрут нужен только если вы его опрашиваете.
     location = /health {
         proxy_pass http://127.0.0.1:8080/health;
     }

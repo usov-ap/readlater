@@ -8,7 +8,9 @@ services:
     container_name: readlater-frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+      # BIND_ADDR=127.0.0.1 -> только с хоста (через внешний reverse proxy)
+      # BIND_ADDR=0.0.0.0   -> доступ из локальной сети напрямую
+      - "${BIND_ADDR:-127.0.0.1}:${FRONTEND_PORT:-3000}:80"
     networks:
       - readlater-network
     depends_on:
